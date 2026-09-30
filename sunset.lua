@@ -1,6 +1,7 @@
 --[[
-    ⬡ BIANN SUNSET SHADER v3.0 ⬡
-    Smooth UI · Fly · Speed · Jump · Teleport · Noclip · Infinity Jump
+    ⬡ BIANN SUNSET SHADER v3.1 ⬡
+    Smooth UI · Fly · Speed · Jump · Teleport · Noclip · Infinite Jump
+    + Rain · Wet Ground · Storm Mode · Lightning
     Discord: https://discord.gg/N38HzXn2E
     User: BiannXz KalxX · N349
 ]]
@@ -23,7 +24,7 @@ local Camera = workspace.CurrentCamera
 -- === CLEANUP ===
 pcall(function()
     for _, v in pairs(Lighting:GetChildren()) do
-        if v.Name:find("BiannSunset") then v:Destroy() end
+        if v.Name:find("BiannSunset") or v.Name:find("BiannRain") or v.Name:find("BiannStorm") then v:Destroy() end
     end
     if CoreGui:FindFirstChild("BiannSunsetGUI") then
         CoreGui:FindFirstChild("BiannSunsetGUI"):Destroy()
@@ -35,6 +36,8 @@ local Config = {
     Multiplier = 1,
     AntiAFK = false,
     SunsetOn = false,
+    RainOn = false,
+    StormOn = false,
     FlySpeed = 100,
     WalkSpeed = 16,
     JumpPower = 50,
@@ -70,7 +73,7 @@ local function GetHumanoid()
     if char then return char:FindFirstChildOfClass("Humanoid") end
 end
 
--- === FUNGSI GRAFIK ===
+-- === GRAPHICS FUNCTIONS ===
 local function ApplySunset(mult)
     Config.SunsetOn = true
     Config.Multiplier = mult
@@ -150,6 +153,198 @@ local function RemoveSunset()
     Lighting.EnvironmentDiffuseScale = Orig.EnvironmentDiffuseScale
     Lighting.EnvironmentSpecularScale = Orig.EnvironmentSpecularScale
     Lighting.ExposureCompensation = Orig.ExposureCompensation
+end
+
+-- === RAIN EFFECT ===
+local rainConn = nil
+local rainParts = {}
+local function ApplyRain()
+    Config.RainOn = true
+
+    -- Atmosphere basah
+    local atmos = Lighting:FindFirstChild("BiannRain_Atmos")
+    if not atmos then
+        atmos = Instance.new("Atmosphere")
+        atmos.Name = "BiannRain_Atmos"
+        atmos.Density = 0.35
+        atmos.Offset = 0.2
+        atmos.Color = Color3.fromRGB(180, 200, 220)
+        atmos.Decay = Color3.fromRGB(100, 130, 160)
+        atmos.Glare = 0.3
+        atmos.Haze = 1.5
+        atmos.Parent = Lighting
+    end
+
+    -- Color correction basah
+    local cc = Lighting:FindFirstChild("BiannRain_CC")
+    if not cc then
+        cc = Instance.new("ColorCorrectionEffect")
+        cc.Name = "BiannRain_CC"
+        cc.Brightness = -0.05
+        cc.Contrast = 0.15
+        cc.Saturation = -0.1
+        cc.TintColor = Color3.fromRGB(200, 220, 240)
+        cc.Parent = Lighting
+    end
+
+    -- Wet ground reflection (genangan air tipis kayak cermin putih)
+    local wetGround = Lighting:FindFirstChild("BiannRain_WetGround")
+    if not wetGround then
+        wetGround = Instance.new("ColorCorrectionEffect")
+        wetGround.Name = "BiannRain_WetGround"
+        wetGround.Brightness = 0.08
+        wetGround.Contrast = 0.25
+        wetGround.Saturation = 0.05
+        wetGround.TintColor = Color3.fromRGB(245, 250, 255)
+        wetGround.Parent = Lighting
+    end
+
+    -- Blur halus buat kesan air
+    local blur = Lighting:FindFirstChild("BiannRain_Blur")
+    if not blur then
+        blur = Instance.new("BlurEffect")
+        blur.Name = "BiannRain_Blur"
+        blur.Size = 1.5
+        blur.Parent = Lighting
+    end
+
+    -- Hujan partikel (client-side, di sekitar camera)
+    rainConn = RunService.RenderStepped:Connect(function()
+        if not Config.RainOn then return end
+        if math.random(1, 3) == 1 then
+            local drop = Instance.new("Part")
+            drop.Name = "BiannRain_Drop"
+            drop.Size = Vector3.new(0.05, 0.4, 0.05)
+            drop.Material = Enum.Material.Neon
+            drop.Color = Color3.fromRGB(200, 220, 255)
+            drop.Transparency = 0.5
+            drop.Anchored = true
+            drop.CanCollide = false
+            drop.CanQuery = false
+            drop.CanTouch = false
+
+            local camPos = Camera.CFrame.Position
+            local randX = math.random(-50, 50)
+            local randZ = math.random(-50, 50)
+            drop.Position = camPos + Vector3.new(randX, 30, randZ)
+            drop.Parent = workspace
+
+            -- Animasi jatuh
+            local startY = drop.Position.Y
+            local endY = startY - 40
+            task.spawn(function()
+                for i = 1, 20 do
+                    if drop and drop.Parent then
+                        drop.Position = drop.Position - Vector3.new(0, 2, 0)
+                        task.wait(0.03)
+                    end
+                end
+                if drop then drop:Destroy() end
+            end)
+
+            table.insert(rainParts, drop)
+            if #rainParts > 100 then
+                local old = table.remove(rainParts, 1)
+                if old and old.Parent then old:Destroy() end
+            end
+        end
+    end)
+end
+
+local function RemoveRain()
+    Config.RainOn = false
+    if rainConn then rainConn:Disconnect() rainConn = nil end
+    for _, v in pairs(rainParts) do
+        if v and v.Parent then v:Destroy() end
+    end
+    rainParts = {}
+
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v.Name:find("BiannRain") then v:Destroy() end
+    end
+end
+
+-- === STORM MODE ===
+local stormConn = nil
+local lightningConn = nil
+local function ApplyStorm()
+    Config.StormOn = true
+
+    -- Awan gelap
+    Lighting.Ambient = Color3.fromRGB(50, 55, 65)
+    Lighting.OutdoorAmbient = Color3.fromRGB(70, 75, 85)
+    Lighting.Brightness = 1
+    Lighting.ClockTime = 15
+    Lighting.GlobalShadows = true
+    Lighting.FogEnd = 30000
+    Lighting.FogStart = 0
+
+    local atmos = Lighting:FindFirstChild("BiannStorm_Atmos")
+    if not atmos then
+        atmos = Instance.new("Atmosphere")
+        atmos.Name = "BiannStorm_Atmos"
+        atmos.Density = 0.5
+        atmos.Offset = 0.3
+        atmos.Color = Color3.fromRGB(100, 110, 120)
+        atmos.Decay = Color3.fromRGB(50, 60, 70)
+        atmos.Glare = 0
+        atmos.Haze = 3
+        atmos.Parent = Lighting
+    end
+
+    -- Color correction gelap
+    local cc = Lighting:FindFirstChild("BiannStorm_CC")
+    if not cc then
+        cc = Instance.new("ColorCorrectionEffect")
+        cc.Name = "BiannStorm_CC"
+        cc.Brightness = -0.15
+        cc.Contrast = 0.3
+        cc.Saturation = -0.3
+        cc.TintColor = Color3.fromRGB(120, 130, 150)
+        cc.Parent = Lighting
+    end
+
+    -- Petir tipis-tipis (flash random)
+    lightningConn = RunService.Heartbeat:Connect(function()
+        if not Config.StormOn then return end
+        if math.random(1, 200) == 1 then
+            -- Flash
+            local flash = Lighting:FindFirstChild("BiannStorm_Flash")
+            if not flash then
+                flash = Instance.new("ColorCorrectionEffect")
+                flash.Name = "BiannStorm_Flash"
+                flash.Brightness = 0.5
+                flash.Contrast = 0.2
+                flash.TintColor = Color3.fromRGB(255, 255, 255)
+                flash.Parent = Lighting
+            end
+            flash.Brightness = 0.6
+            task.wait(0.05)
+            flash.Brightness = 0.1
+            task.wait(0.08)
+            flash.Brightness = 0.4
+            task.wait(0.06)
+            flash.Brightness = -0.1
+        end
+    end)
+end
+
+local function RemoveStorm()
+    Config.StormOn = false
+    if stormConn then stormConn:Disconnect() stormConn = nil end
+    if lightningConn then lightningConn:Disconnect() lightningConn = nil end
+
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v.Name:find("BiannStorm") then v:Destroy() end
+    end
+
+    Lighting.Ambient = Orig.Ambient
+    Lighting.OutdoorAmbient = Orig.OutdoorAmbient
+    Lighting.Brightness = Orig.Brightness
+    Lighting.ClockTime = Orig.ClockTime
+    Lighting.FogEnd = Orig.FogEnd
+    Lighting.FogStart = Orig.FogStart
+    Lighting.GlobalShadows = Orig.GlobalShadows
 end
 
 -- === ANTI AFK ===
@@ -313,7 +508,7 @@ local function SetFullbright(state)
     end
 end
 
--- === TELEPORT KE PLAYER ===
+-- === TELEPORT TO PLAYER ===
 local function TeleportToPlayer(targetName)
     local target = Players:FindFirstChild(targetName)
     if target and target.Character then
@@ -325,7 +520,7 @@ local function TeleportToPlayer(targetName)
     end
 end
 
--- === NOTIFIKASI ===
+-- === NOTIFICATION ===
 local function Notify(text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -345,7 +540,7 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() gui.Parent = CoreGui end)
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- === TOMBOL LOGO ===
+-- === LOGO BUTTON ===
 local LogoBtn = Instance.new("TextButton")
 LogoBtn.Size = UDim2.new(0, 50, 0, 50)
 LogoBtn.Position = UDim2.new(0, 20, 0.5, -25)
@@ -448,7 +643,7 @@ local SideSub = Instance.new("TextLabel")
 SideSub.Size = UDim2.new(1, 0, 0, 16)
 SideSub.Position = UDim2.new(0, 0, 0, 30)
 SideSub.BackgroundTransparency = 1
-SideSub.Text = "SUNSET v3.0"
+SideSub.Text = "SUNSET v3.1"
 SideSub.TextColor3 = Color3.fromRGB(200, 130, 90)
 SideSub.TextSize = 9
 SideSub.Font = Enum.Font.Gotham
@@ -545,7 +740,7 @@ local function CreatePage(name)
     return p
 end
 
--- === KOMPONEN ===
+-- === COMPONENTS ===
 local function SectionTitle(parent, text)
     local l = Instance.new("TextLabel")
     l.Size = UDim2.new(1, 0, 0, 18)
@@ -672,7 +867,7 @@ local function ActionBtn(parent, text, icon, callback)
     return b
 end
 
--- === HALAMAN USER ===
+-- === USER PAGE ===
 local pUser = CreatePage("User")
 
 local ProfileCard = Instance.new("Frame")
@@ -768,14 +963,14 @@ ActionBtn(pUser, "Copy Discord Link", "📋", function()
     pcall(function()
         if setclipboard then
             setclipboard(DiscordLink)
-            Notify("Link Discord dicopy!")
+            Notify("Discord link copied!")
         else
-            Notify("Clipboard gak support")
+            Notify("Clipboard not supported")
         end
     end)
 end)
 
--- === HALAMAN MAIN ===
+-- === MAIN PAGE ===
 local pMain = CreatePage("Main")
 
 SectionTitle(pMain, "PLAYER")
@@ -803,7 +998,7 @@ ActionBtn(pMain, "Jump: 250", "🦘", function() SetJump(250) Notify("Jump: 250"
 ActionBtn(pMain, "Reset Speed & Jump", "↺", function()
     SetSpeed(16)
     SetJump(50)
-    Notify("Reset Speed & Jump")
+    Notify("Speed & Jump reset")
 end)
 
 SectionTitle(pMain, "SERVER")
@@ -813,7 +1008,7 @@ ActionBtn(pMain, "Rejoin Server", "🔄", function()
     Rejoin()
 end)
 
--- === HALAMAN GRAFIK ===
+-- === GRAFIK PAGE ===
 local pGrafik = CreatePage("Grafik")
 
 SectionTitle(pGrafik, "SUNSET SHADER")
@@ -833,7 +1028,29 @@ ToggleRow(pGrafik, "Fullbright", false, function(state)
     Notify("Fullbright: " .. (state and "ON" or "OFF"))
 end)
 
-SectionTitle(pGrafik, "GRAFIK PENGALI")
+SectionTitle(pGrafik, "WEATHER")
+
+ToggleRow(pGrafik, "Rain Mode", false, function(state)
+    if state then
+        ApplyRain()
+        Notify("Rain: ON")
+    else
+        RemoveRain()
+        Notify("Rain: OFF")
+    end
+end)
+
+ToggleRow(pGrafik, "Storm Mode (Dark Clouds + Lightning)", false, function(state)
+    if state then
+        ApplyStorm()
+        Notify("Storm: ON")
+    else
+        RemoveStorm()
+        Notify("Storm: OFF")
+    end
+end)
+
+SectionTitle(pGrafik, "GRAPHICS MULTIPLIER")
 
 local multContainer = Instance.new("Frame")
 multContainer.Size = UDim2.new(1, 0, 0, 38)
@@ -878,7 +1095,7 @@ local function CreateMultBtn(text, val, order)
         if Config.SunsetOn then
             ApplySunset(val)
         end
-        Notify("Grafik: " .. text)
+        Notify("Graphics: " .. text)
 
         for _, bb in pairs(multBtns) do
             TweenService:Create(bb, TweenInfo.new(0.25), {
@@ -900,10 +1117,10 @@ CreateMultBtn("3×", 3, 2)
 CreateMultBtn("4×", 4, 3)
 CreateMultBtn("5×", 5, 4)
 
--- === HALAMAN SETING ===
+-- === SETING PAGE ===
 local pSeting = CreatePage("Seting")
 
-SectionTitle(pSeting, "PENGATURAN")
+SectionTitle(pSeting, "SETTINGS")
 
 ToggleRow(pSeting, "Anti AFK", Config.AntiAFK, function(state)
     ToggleAntiAFK(state)
@@ -915,13 +1132,15 @@ ActionBtn(pSeting, "Rejoin Server", "🔄", function()
     Rejoin()
 end)
 
-ActionBtn(pSeting, "Reset Grafik", "↺", function()
+ActionBtn(pSeting, "Reset Graphics", "↺", function()
     RemoveSunset()
+    RemoveRain()
+    RemoveStorm()
     Config.Multiplier = 1
-    Notify("Grafik direset")
+    Notify("Graphics reset")
 end)
 
-SectionTitle(pSeting, "TELEPORT KE PLAYER")
+SectionTitle(pSeting, "TELEPORT TO PLAYER")
 
 local tpContainer = Instance.new("Frame")
 tpContainer.Size = UDim2.new(1, 0, 0, 200)
@@ -973,7 +1192,7 @@ local function RefreshPlayerList()
             end)
             b.MouseButton1Click:Connect(function()
                 TeleportToPlayer(plr.Name)
-                Notify("Teleport ke: " .. plr.Name)
+                Notify("Teleported to: " .. plr.Name)
             end)
         end
     end
@@ -1081,8 +1300,8 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Inisialisasi
+-- === INIT ===
 SwitchPage("User")
 
-print("[BIANN SUNSET v3.0] Loaded · User: BiannXz KalxX")
+print("[BIANN SUNSET v3.1] Loaded · User: BiannXz KalxX")
 print("[BIANN SUNSET] Discord: " .. DiscordLink)
